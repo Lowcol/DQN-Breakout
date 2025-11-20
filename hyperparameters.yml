@@ -1,0 +1,13 @@
+breakout1:
+  env_id: "ALE/Breakout-v5"
+  replay_memory_size: 1_000_000
+  mini_batch_size: 64
+  epsilon_init: 1
+  epsilon_decay: 0.999996
+  epsilon_min: 0.05
+  network_sync_rate: 10_000
+  learning_rate_a: 0.0001
+  discount_factor_g: 0.99
+  stop_on_reward: 100_000
+  enable_double_dqn: True
+  enable_dueling_dqn: True
