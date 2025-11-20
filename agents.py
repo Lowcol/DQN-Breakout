@@ -274,13 +274,13 @@ class Agent:
     def optimize(self, data, policy_dqn, target_dqn):
         
         
-        states = data.observations
-        actions = data.actions.long()
+        states = data.observations.to(device)
+        actions = data.actions.long().to(device)
         if actions.dim() == 1:
             actions = actions.unsqueeze(1)
-        new_states = data.next_observations
-        rewards = data.rewards
-        terminations = data.dones
+        new_states = data.next_observations.to(device)
+        rewards = data.rewards.to(device)
+        terminations = data.dones.to(device)
         
         with torch.no_grad():
             if self.enable_double_dqn:
