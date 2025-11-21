@@ -1,6 +1,6 @@
 breakout1:
-  env_id: "ALE/Breakout-v5"
-  replay_memory_size: 1_000_000
+  env_id: "Breakout-v5"
+  replay_memory_size: 50_000  # Reduced from 1M to 50K for memory efficiency
   mini_batch_size: 64
   epsilon_init: 1
   epsilon_decay: 0.999996
@@ -11,3 +11,35 @@ breakout1:
   stop_on_reward: 100_000
   enable_double_dqn: True
   enable_dueling_dqn: True
+
+# Fast training configuration for speed testing
+breakout_fast:
+  env_id: "Breakout-v5"
+  replay_memory_size: 10_000    # Much smaller buffer for faster updates
+  mini_batch_size: 128          # Larger batch for more efficient GPU usage
+  epsilon_init: 1
+  epsilon_decay: 0.9995         # Faster epsilon decay (more aggressive exploration->exploitation)
+  epsilon_min: 0.01            # Lower minimum epsilon
+  network_sync_rate: 1_000      # More frequent target updates
+  learning_rate_a: 0.0005       # Higher learning rate for faster learning
+  discount_factor_g: 0.99
+  stop_on_reward: 100_000
+  enable_double_dqn: True
+  enable_dueling_dqn: True
+  exploration_steps: 50_000     # Linear epsilon schedule over 50K steps
+
+# Ultra-fast configuration for maximum speed testing
+breakout_ultrafast:
+  env_id: "Breakout-v5"
+  replay_memory_size: 5_000     # Very small buffer
+  mini_batch_size: 256          # Large batch size
+  epsilon_init: 0.8             # Start with less exploration
+  epsilon_decay: 0.999          # Very fast epsilon decay
+  epsilon_min: 0.005            # Very low minimum epsilon
+  network_sync_rate: 500        # Very frequent target updates
+  learning_rate_a: 0.001        # High learning rate
+  discount_factor_g: 0.95       # Lower gamma for more immediate rewards
+  stop_on_reward: 100_000
+  enable_double_dqn: True
+  enable_dueling_dqn: True
+  exploration_steps: 25_000     # Fast linear epsilon schedule

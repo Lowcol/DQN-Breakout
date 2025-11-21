@@ -1,6 +1,9 @@
 import csv
 from re import I
-import gymnasium as gym 
+
+from numpy import True_
+import gym  # old gym for envpool compatibility
+import gymnasium  # new gymnasium for buffer compatibility
 import ale_py  # Required for ALE namespace registration
 import matplotlib
 import torch
@@ -27,7 +30,6 @@ if __package__ is None:
     __package__ = DIR.name
 
 from util.atari_buffer import TorchAtariReplayBuffer
-from util.env_wrappers import RecordEpisodeStatistics
 from util.helpers import linear_schedule, get_optimizer
 
 
@@ -73,11 +75,15 @@ class Agent:
         self.loss_fn = nn.HuberLoss()   # NN Loss function. Huber loss is more robust to outliers than MSE 
         self.optimizer = None         # NN optimizer. Initialized later
         
+        # Create config-specific subdirectory
+        self.config_dir = os.path.join(RUNS_DIR, self.hyperparameter_set)
+        os.makedirs(self.config_dir, exist_ok=True)
+        
         #path to run info
-        self.LOG_FILE = os.path.join(RUNS_DIR, f'{self.hyperparameter_set}.log')
-        self.MODEL_FILE = os.path.join(RUNS_DIR, f'{self.hyperparameter_set}.pt')
-        self.GRAPH_FILE = os.path.join(RUNS_DIR, f'{self.hyperparameter_set}.png')
-        self.METRICS_FILE = os.path.join(RUNS_DIR, f'{self.hyperparameter_set}_metrics.csv')
+        self.LOG_FILE = os.path.join(self.config_dir, f'{self.hyperparameter_set}.log')
+        self.MODEL_FILE = os.path.join(self.config_dir, f'{self.hyperparameter_set}.pt')
+        self.GRAPH_FILE = os.path.join(self.config_dir, f'{self.hyperparameter_set}.png')
+        self.METRICS_FILE = os.path.join(self.config_dir, f'{self.hyperparameter_set}_metrics.csv')
         self._metrics_header_written = False
     
     def run(self, is_training=True, render=False):
@@ -97,22 +103,32 @@ class Agent:
         np.random.seed(seed)
         torch.manual_seed(seed)
         
-        env = envpool.make(
+        envs = envpool.make(
             self.env_id,
             env_type="gym",
-            num_envs=1,
+            num_envs=1, # can change to more
             episodic_life=True,
             reward_clip=True,
             seed=seed,
         )
-        env.num_envs = 1
-        env.single_action_space = env.action_space
-        env.single_observation_space = env.observation_space
-        # Wrap with RecordEpisodeStatistics to track episode stats
-        env = RecordEpisodeStatistics(env)
+
+
+        # Convert gym spaces to gymnasium spaces for buffer compatibility
+        import gymnasium
+        envs.single_action_space = gymnasium.spaces.Discrete(envs.action_space.n)
+        envs.single_observation_space = gymnasium.spaces.Box(
+            low=envs.observation_space.low,
+            high=envs.observation_space.high,
+            shape=envs.observation_space.shape,
+            dtype=envs.observation_space.dtype
+        )
+        # Manual episode tracking (removed RecordEpisodeStatistics wrapper due to format incompatibility)
         
-        num_actions = env.single_action_space.n
-        obs_shape = env.single_observation_space.shape
+        num_actions = envs.single_action_space.n
+        obs_shape = envs.single_observation_space.shape
+        # assert isinstance(envs.action_space, gym.spaces.Discrete), "only discrete action space is supported"
+
+
         
         reward_per_episode = []
         epsilon_by_episode = []
@@ -120,14 +136,14 @@ class Agent:
         steps_history = []
         
         policy_dqn = DQN(obs_shape, num_actions, self.enable_dueling_dqn).to(device)
-        
+
         
         if is_training:
             # initialize replay memory (GPU-based TorchAtariReplayBuffer)
             memory = TorchAtariReplayBuffer(
                 buffer_size=self.replay_memory_size,
-                observation_space=env.single_observation_space,
-                action_space=env.single_action_space,
+                observation_space=envs.single_observation_space,
+                action_space=envs.single_action_space,
                 device=device,
                 optimize_memory_usage=False,
                 handle_timeout_termination=True,
@@ -162,9 +178,13 @@ class Agent:
             policy_dqn.eval()
             
 
+        # Episode tracking variables (replacing RecordEpisodeStatistics)
+        total_episode_reward = 0.0
+        total_episode_steps = 0
+        
         for episode in itertools.count():
-            # envpool returns numpy array directly (batched even for num_envs=1)
-            state = env.reset()
+            # envpool returns (observations, info) tuple
+            state, reset_info = envs.reset()
             state = np.asarray(state, dtype=np.uint8)
             # For num_envs=1, envpool returns shape (1, H, W, C), squeeze to (H, W, C)
             if state.shape[0] == 1:
@@ -174,13 +194,13 @@ class Agent:
             episode_steps = 0
             
             if is_training:
-                # envpool doesn't provide lives in reset info, track it from step infos
+                # envspool doesn't provide lives in reset info, track it from step infos
                 current_life = None
             
             while (not terminated and episode_reward < self.stop_on_reward):
                 # select action based on epsilon greedy
                 if is_training and random.random() < epsilon:
-                    action = env.single_action_space.sample()
+                    action = envs.single_action_space.sample()
                 else:
                     with torch.no_grad():
                         # Add batch dimension for network input
@@ -190,28 +210,21 @@ class Agent:
                 
                 # Processing:
                 action_value = int(action.item()) if isinstance(action, torch.Tensor) else int(action)
-                # envpool returns (obs, rewards, dones, infos) - batched arrays
+                # envpool returns (obs, rewards, terminated, truncated, infos) - batched arrays
                 # For num_envs=1, these are still arrays with shape (1, ...)
-                # RecordEpisodeStatistics wrapper adds 'r' (episode return) and 'l' (episode length) to infos
-                new_state, rewards, dones, infos = env.step(np.array([action_value]))
+                new_state, rewards, terminated_arr, truncated_arr, infos = envs.step(np.array([action_value]))
                 new_state = np.asarray(new_state, dtype=np.uint8)
                 reward = float(rewards[0]) if isinstance(rewards, np.ndarray) else float(rewards)
-                terminated = bool(dones[0]) if isinstance(dones, np.ndarray) else bool(dones)
-                # Handle infos dict (RecordEpisodeStatistics adds 'r' and 'l' keys for episode stats)
-                # For single env, extract scalar values from arrays for easier handling
-                if isinstance(infos, dict):
-                    # Extract episode stats if available (RecordEpisodeStatistics adds these)
-                    episode_return = float(infos.get('r', [0.0])[0]) if isinstance(infos.get('r'), np.ndarray) else episode_reward
-                    episode_length = int(infos.get('l', [0])[0]) if isinstance(infos.get('l'), np.ndarray) else episode_steps
-                    # Extract other info values (like lives) as scalars
-                    info = {k: (v[0] if isinstance(v, np.ndarray) and len(v) > 0 else v) 
-                           for k, v in infos.items()}
-                else:
-                    info = infos[0] if isinstance(infos, (list, np.ndarray)) else infos
-                # Squeeze batch dimension for single env
+                terminated = bool(terminated_arr[0]) if isinstance(terminated_arr, np.ndarray) else bool(terminated_arr)
+                truncated = bool(truncated_arr[0]) if isinstance(truncated_arr, np.ndarray) else bool(truncated_arr)
+                
+                # Extract info values as scalars for single env
+                info = {k: (v[0] if isinstance(v, np.ndarray) and len(v) > 0 else v) 
+                       for k, v in infos.items()}
+                
+                # Squeeze batch dimension for single envs
                 if new_state.shape[0] == 1:
                     new_state = new_state.squeeze(0)
-                truncated = False
                 
                 episode_reward += reward
                 episode_steps += 1
@@ -220,10 +233,10 @@ class Agent:
                 if is_training:
                     total_steps += 1
                     # handle life loss for breakout
-                    # envpool handles episodic_life internally, so terminated already accounts for life loss
+                    # envspool handles episodic_life internally, so terminated already accounts for life loss
                     done = terminated or truncated
                     # Note: RecordEpisodeStatistics adds 'r' (episode return) and 'l' (episode length) to infos
-                    # For single env, info is a dict with scalar values extracted from arrays
+                    # For single envs, info is a dict with scalar values extracted from arrays
                     if isinstance(info, dict) and 'lives' in info:
                         if current_life is not None and info['lives'] < current_life:
                             done = True
@@ -233,20 +246,20 @@ class Agent:
                         current_life = info['lives']
                     
                     # Convert to torch tensors and move to device (TorchAtariReplayBuffer expects GPU tensors)
-                    # Add batch dimension for single env: (H, W, C) -> (1, H, W, C)
+                    # Add batch dimension for single envs: (H, W, C) -> (1, H, W, C)
                     state_tensor = torch.from_numpy(state).unsqueeze(0).to(device)
                     next_state_tensor = torch.from_numpy(new_state).unsqueeze(0).to(device)
                     # Handle terminal observation: if done, next_obs should be current obs
                     if done:
                         next_state_tensor = state_tensor.clone()
-                    # Actions need shape (1, 1) for discrete actions with n_envs=1
+                    # Actions need shape (1, 1) for discrete actions with n_envss=1
                     action_tensor = torch.tensor([[action_value]], dtype=torch.int64, device=device)
                     reward_tensor = torch.tensor([[reward]], dtype=torch.float32, device=device)
                     done_tensor = torch.tensor([[done]], dtype=torch.bool, device=device)
                     
                     # Prepare infos dict for handle_timeout_termination
                     # Keep original infos structure for TorchAtariReplayBuffer (it expects arrays)
-                    infos_dict = {"TimeLimit.truncated": np.array([False])}  # envpool doesn't use timeouts
+                    infos_dict = {"TimeLimit.truncated": np.array([False])}  # envspool doesn't use timeouts
                             
                     memory.add(
                         obs=state_tensor,
@@ -264,6 +277,10 @@ class Agent:
                 
             reward_per_episode.append(episode_reward)
             
+            # Update total episode tracking
+            total_episode_reward += episode_reward
+            total_episode_steps += episode_steps
+            
             if is_training:
                 epsilon_by_episode.append(epsilon)
                 steps_history.append(total_steps)
@@ -278,7 +295,12 @@ class Agent:
                     loss=last_loss
                 )
                 if episode_reward > best_reward:
-                    log_message = f"{datetime.now().strftime(DATE_FORMAT)}: New best reward {episode_reward:0.1f} ({(episode_reward-best_reward)/best_reward*100:+.1f}%) at episode {episode}, saving model..."
+                    # Calculate percentage improvement safely
+                    if best_reward != 0:
+                        percentage_improvement = (episode_reward - best_reward) / abs(best_reward) * 100
+                        log_message = f"{datetime.now().strftime(DATE_FORMAT)}: New best reward {episode_reward:0.1f} ({percentage_improvement:+.1f}%) at episode {episode}, saving model..."
+                    else:
+                        log_message = f"{datetime.now().strftime(DATE_FORMAT)}: New best reward {episode_reward:0.1f} at episode {episode}, saving model..."
                     print(log_message)
                     with open(self.LOG_FILE, 'a') as file:
                         file.write(log_message+ '\n')
@@ -288,7 +310,7 @@ class Agent:
 
                 
                 current_time = datetime.now()
-                if current_time - last_graph_update_time > timedelta(seconds=10):
+                if current_time - last_graph_update_time > timedelta(seconds=60):  # Less frequent graph updates for speed
                     self.save_graph(
                         steps_history=steps_history,
                         rewards_per_episode=reward_per_episode,
@@ -297,7 +319,7 @@ class Agent:
                     )
                     last_graph_update_time = current_time
                 
-                if len(memory) >= self.mini_batch_size:
+                if memory.pos >= self.mini_batch_size:
                     #Sample from memory
                     data = memory.sample(self.mini_batch_size)
                     last_loss = self.optimize(data, policy_dqn, target_dqn)
@@ -325,7 +347,7 @@ class Agent:
         fig = plt.figure(1, figsize=(10, 6))
 
         plt.subplot(211)
-        plt.xlabel('Environment Steps')
+        plt.xlabel('envsironment Steps')
         plt.ylabel('Mean Reward (100 eps)')
         plt.plot(steps_history, mean_rewards, label='Rolling avg reward')
         plt.plot(steps_history, rewards_per_episode[-len(steps_history):], alpha=0.3, label='Episode reward')
@@ -357,15 +379,17 @@ class Agent:
 
                     
     def optimize(self, data, policy_dqn, target_dqn):
-        # TorchAtariReplayBuffer stores observations as uint8, DQN network normalizes in forward pass
+        # TorchAtariReplayBuffer returns (obs, actions, next_obs, dones, rewards) tuple
         # Data is already on device from the buffer
-        states = data.observations.float() / 255.0  # Normalize uint8 to [0, 1]
-        actions = data.actions.long()
+        observations, actions, next_observations, dones, rewards = data
+        
+        states = observations.float() / 255.0  # Normalize uint8 to [0, 1]
+        actions = actions.long()
         if actions.dim() == 1:
             actions = actions.unsqueeze(1)
-        new_states = data.next_observations.float() / 255.0  # Normalize uint8 to [0, 1]
-        rewards = data.rewards.flatten()  # Flatten to match atari_dqn.py format
-        terminations = data.dones.float().flatten()  # Flatten to match atari_dqn.py format
+        new_states = next_observations.float() / 255.0  # Normalize uint8 to [0, 1]
+        rewards = rewards.flatten()  # Flatten to match atari_dqn.py format
+        terminations = dones.float().flatten()  # Flatten to match atari_dqn.py format
         
         with torch.no_grad():
             if self.enable_double_dqn:
@@ -386,14 +410,14 @@ class Agent:
         return loss.item()
             
 class CropObservation(gym.ObservationWrapper):
-    def __init__(self, env, top=34, bottom=0):
-        super().__init__(env)
-        h, w = env.observation_space.shape[:2]
+    def __init__(self, envs, top=34, bottom=0):
+        super().__init__(envs)
+        h, w = envs.observation_space.shape[:2]
         self.top = top
         self.bottom = bottom
         self.observation_space = gym.spaces.Box(
             low=0, high=255,
-            shape=(h - top - bottom, w, env.observation_space.shape[2]),
+            shape=(h - top - bottom, w, envs.observation_space.shape[2]),
             dtype=np.uint8,
         )
 
