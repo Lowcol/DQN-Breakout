@@ -8,7 +8,7 @@
             "name": "Breakout DQN",
             "type": "debugpy",
             "request": "launch",
-            "program": "agents.py",
+            "program": "agents1.1.py",
             "args": ["breakout1", "--train"],
             "console": "integratedTerminal"
         }
