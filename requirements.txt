@@ -1,9 +1,20 @@
-gymnasium>=0.29.0
-gymnasium[atari]>=0.29.0
-ale-py>=0.9.0
+# Core dependencies
 torch>=2.0.0
-stable-baselines3>=2.0.0
 numpy>=1.24.0
 matplotlib>=3.7.0
 pyyaml>=6.0
-gymnasium[other]
+
+# Reinforcement Learning
+stable-baselines3>=2.0.0
+envpool>=0.8.0
+
+# Atari environments
+gymnasium>=0.29.0
+gymnasium[atari]>=0.29.0
+ale-py>=0.9.0
+
+# Legacy gym for envpool compatibility
+gym>=0.21.0
+
+# Optional dependencies
+wandb>=0.15.0  # For experiment tracking (used in atari_dqn.py)
