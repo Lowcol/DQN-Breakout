@@ -34,3 +34,10 @@ pip install -r requirements
 
 **2025-11-21**: Enhanced DQN implementation with envpool integration for faster training. Fixed compatibility issues between old gym (envpool) and new gymnasium (stable-baselines3), implemented GPU-accelerated TorchAtariReplayBuffer, and added optimized hyperparameter configurations (breakout_fast, breakout_ultrafast) with organized output structure in config-specific subdirectories.
 
+
+**2025-11-22**: implemented a max step param for the overall training
+Ajusting graphing,
+adding seperate file for view the agents in agent. Add to be implemented in seperate file since envpool doesn't allow render. And I did't want for both gym environment to be running in same file.
+
+
+
