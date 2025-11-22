@@ -12,6 +12,7 @@ envpool>=0.8.0
 gymnasium>=0.29.0
 gymnasium[atari]>=0.29.0
 ale-py>=0.9.0
+opencv-python>=4.8.0  # For frame preprocessing in watch_agent.py
 
 # Legacy gym for envpool compatibility
 gym>=0.21.0

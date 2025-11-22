@@ -71,6 +71,8 @@ class Agent:
         # Optional: exploration_steps for linear epsilon schedule (if None, uses exponential decay)
         self.exploration_steps  = hyperparameters.get('exploration_steps', None)
         self.use_linear_schedule = self.exploration_steps is not None
+        # Optional: max_steps overall across all episodes (None or 0 for unlimited)
+        self.max_steps = hyperparameters.get('max_steps', None)
 
         self.loss_fn = nn.HuberLoss()   # NN Loss function. Huber loss is more robust to outliers than MSE 
         self.optimizer = None         # NN optimizer. Initialized later
@@ -197,7 +199,12 @@ class Agent:
                 # envspool doesn't provide lives in reset info, track it from step infos
                 current_life = None
             
-            while (not terminated and episode_reward < self.stop_on_reward):
+            while not terminated and episode_reward < self.stop_on_reward:
+                # Check max_steps limit (total steps across all episodes)
+                if is_training and self.max_steps is not None and self.max_steps > 0 and total_steps >= self.max_steps:
+                    terminated = True
+                    break
+                
                 # select action based on epsilon greedy
                 if is_training and random.random() < epsilon:
                     action = envs.single_action_space.sample()
@@ -339,6 +346,14 @@ class Agent:
                     if step_count > self.network_sync_rate:
                         target_dqn.load_state_dict(policy_dqn.state_dict())
                         step_count=0
+                
+                # Check if we've reached max_steps and should stop training
+                if self.max_steps is not None and self.max_steps > 0 and total_steps >= self.max_steps:
+                    log_message = f"{datetime.now().strftime(DATE_FORMAT)}: Reached max_steps ({self.max_steps}), stopping training..."
+                    print(log_message)
+                    with open(self.LOG_FILE, 'a') as file:
+                        file.write(log_message + '\n')
+                    break
                     
     def save_graph(self, steps_history, rewards_per_episode, mean_rewards, epsilon_history):
         if not steps_history:
@@ -347,10 +362,10 @@ class Agent:
         fig = plt.figure(1, figsize=(10, 6))
 
         plt.subplot(211)
-        plt.xlabel('envsironment Steps')
+        plt.xlabel('Environment Steps')
         plt.ylabel('Mean Reward (100 eps)')
-        plt.plot(steps_history, mean_rewards, label='Rolling avg reward')
-        plt.plot(steps_history, rewards_per_episode[-len(steps_history):], alpha=0.3, label='Episode reward')
+        plt.plot(steps_history, mean_rewards, color='darkred', label='Rolling avg reward', linewidth=2)
+        plt.plot(steps_history, rewards_per_episode[-len(steps_history):], color='lightcoral', alpha=0.6, label='Episode reward')
         plt.legend(loc='lower right')
 
         plt.subplot(212)
