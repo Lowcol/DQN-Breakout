@@ -40,4 +40,6 @@ Ajusting graphing,
 adding seperate file for view the agents in agent. Add to be implemented in seperate file since envpool doesn't allow render. And I did't want for both gym environment to be running in same file.
 
 
-
+**2025-11-23**: ditched the envpool env since its just to finiky to use. Also it add a bunch of limitation that are not worth dealing with like no render mode.
+Implemented agents1.3.py that recreates the params used in original DQN training.
+Need to fix epsilon decay and the training result are not what I expected so need to review the code. Im getting breakout3.1.

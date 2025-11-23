@@ -225,7 +225,7 @@ class Agent:
                     loss=last_loss
                 )
                 if episode_reward > best_reward:
-                    log_message = f"{datetime.now().strftime(DATE_FORMAT)}: New best reward {episode_reward:0.1f} ({(episode_reward-best_reward)/best_reward*100:+.1f}%) at episode {episode}, saving model..."
+                    log_message = f"{datetime.now().strftime(DATE_FORMAT)}: New best reward {episode_reward:0.1f} at episode {episode}, saving model..."
                     print(log_message)
                     with open(self.LOG_FILE, 'a') as file:
                         file.write(log_message+ '\n')
@@ -326,12 +326,18 @@ class Agent:
         rewards = data.rewards.to(device)
         terminations = data.dones.to(device)
         
+        # Ensure rewards and terminations are 1D tensors (flatten if needed)
+        if rewards.dim() > 1:
+            rewards = rewards.flatten()
+        if terminations.dim() > 1:
+            terminations = terminations.flatten()
+        
         with torch.no_grad():
             if self.enable_double_dqn:
                 # Double DQN
                 best_actions_from_policy = policy_dqn(new_states).argmax(dim=1)
                 target_q = rewards + (1-terminations) * self.discount_factor_g * \
-                    target_dqn(new_states).gather(dim=1, index=best_actions_from_policy.unsqueeze(dim=1)).squeeze()
+                    target_dqn(new_states).gather(dim=1, index=best_actions_from_policy.unsqueeze(dim=1)).squeeze(1)
             else:
                 target_q = rewards + (1-terminations) * self.discount_factor_g * target_dqn(new_states).max(dim=1)[0]
             

@@ -34,7 +34,7 @@ breakout1.1:
 # Medium post configuration - matches the blog implementation exactly
 breakout3.1:
   env_id: "Breakout-v5"
-  replay_memory_size: 200_000   # Medium post uses 500k (reduced from 1M)
+  replay_memory_size: 300_000   # Medium post uses 500k (reduced from 1M)
   mini_batch_size: 32           # Batch size 32
   min_buffer_size: 50_000       # Wait until 50k samples before training
   update_freq: 4                # Train every 4 steps
@@ -44,8 +44,8 @@ breakout3.1:
   network_sync_rate: 10_000     # Target network update every 10k steps
   learning_rate_a: 0.0001       # Adam optimizer with lr=0.0001
   discount_factor_g: 0.99       # Gamma = 0.99
-  stop_on_reward: 500           # Stop when reaching 500 reward
+  stop_on_reward: 1000           # Stop when reaching 1000 reward
   enable_double_dqn: True       # Double DQN enabled
   enable_dueling_dqn: True      # Dueling DQN enabled
-  exploration_steps: 1_000_000  # Linear epsilon decay over 1M steps
+  exploration_steps: 150_000  # Linear epsilon decay over 150k steps
 
