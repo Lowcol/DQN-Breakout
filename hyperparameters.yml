@@ -2,6 +2,8 @@ breakout1:
   env_id: "Breakout-v5"
   replay_memory_size: 50_000  # Reduced from 1M to 50K for memory efficiency
   mini_batch_size: 64
+  min_buffer_size: 50_000  # Wait until buffer is populated before training
+  update_freq: 4  # Train every 4 steps
   epsilon_init: 1
   epsilon_decay: 0.999996
   epsilon_min: 0.05
@@ -9,22 +11,23 @@ breakout1:
   learning_rate_a: 0.0001
   discount_factor_g: 0.99
   stop_on_reward: 100_000
-  max_steps: 50000
   enable_double_dqn: True
   enable_dueling_dqn: True
 
-# Fast training configuration for speed testing
-breakout_cuda:
+breakout1.1:
   env_id: "Breakout-v5"
-  replay_memory_size: 10_000    # Much smaller buffer for faster updates
-  mini_batch_size: 128          # Larger batch for more efficient GPU usage
+  replay_memory_size: 200000    # Much smaller buffer for faster updates
+  mini_batch_size: 32          # Larger batch for more efficient GPU usage
+  min_buffer_size: 50_000  # Wait until buffer is populated before training
+  update_freq: 4  # Train every 4 steps
   epsilon_init: 1
-  epsilon_decay: 0.9995         # Faster epsilon decay (more aggressive exploration->exploitation)
-  epsilon_min: 0.01            # Lower minimum epsilon
-  network_sync_rate: 1_000      # More frequent target updates
-  learning_rate_a: 0.0005       # Higher learning rate for faster learning
+  epsilon_decay: 0.9995         # useless since linear decay is used
+  epsilon_min: 0.1            # Lower minimum epsilon
+  network_sync_rate: 10000      # More frequent target updates
+  learning_rate_a: 0.0001       # Higher learning rate for faster learning
   discount_factor_g: 0.99
-  stop_on_reward: 100_000
+  stop_on_reward: 100000
   enable_double_dqn: True
   enable_dueling_dqn: True
-  exploration_steps: 50_000     # Linear epsilon schedule over 50K steps
+  exploration_steps: 1000000     # Linear epsilon schedule over 1m steps
+

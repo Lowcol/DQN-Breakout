@@ -73,6 +73,10 @@ class Agent:
         self.use_linear_schedule = self.exploration_steps is not None
         # Optional: max_steps overall across all episodes (None or 0 for unlimited)
         self.max_steps = hyperparameters.get('max_steps', None)
+        # Minimum buffer size before training starts (default to mini_batch_size for backward compatibility)
+        self.min_buffer_size = hyperparameters.get('min_buffer_size', self.mini_batch_size)
+        # Update frequency: train every N steps (default 1 for backward compatibility)
+        self.update_freq = hyperparameters.get('update_freq', 1)
 
         self.loss_fn = nn.HuberLoss()   # NN Loss function. Huber loss is more robust to outliers than MSE 
         self.optimizer = None         # NN optimizer. Initialized later
@@ -326,7 +330,12 @@ class Agent:
                     )
                     last_graph_update_time = current_time
                 
-                if memory.pos >= self.mini_batch_size:
+                # Check if buffer is being populated (before min_buffer_size)
+                if memory.pos < self.min_buffer_size:
+                    continue  # Skip training, stay in full exploration mode
+                
+                # Train only every update_freq steps after buffer is ready
+                if total_steps % self.update_freq == 0:
                     #Sample from memory
                     data = memory.sample(self.mini_batch_size)
                     last_loss = self.optimize(data, policy_dqn, target_dqn)
