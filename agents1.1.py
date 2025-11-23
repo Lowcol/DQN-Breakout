@@ -330,26 +330,28 @@ class Agent:
                     )
                     last_graph_update_time = current_time
                 
+                # Decay epsilon based on total_steps (independent of training)
+                if self.use_linear_schedule:
+                    epsilon = linear_schedule(
+                        self.epsilon_init, 
+                        self.epsilon_min, 
+                        self.exploration_steps, 
+                        total_steps
+                    )
+                else:
+                    epsilon = max(epsilon * self.epsilon_decay, self.epsilon_min)
+                
                 # Check if buffer is being populated (before min_buffer_size)
                 if memory.pos < self.min_buffer_size:
-                    continue  # Skip training, stay in full exploration mode
+                    if memory.pos % 10000 == 0 and memory.pos > 0:
+                        print(f"Populating replay buffer... {memory.pos}/{self.min_buffer_size} samples (epsilon: {epsilon:.3f})")
+                    continue  # Skip training but epsilon still decays
                 
                 # Train only every update_freq steps after buffer is ready
                 if total_steps % self.update_freq == 0:
                     #Sample from memory
                     data = memory.sample(self.mini_batch_size)
                     last_loss = self.optimize(data, policy_dqn, target_dqn)
-                    
-                    #decay epsilon - use linear schedule if exploration_steps is set, otherwise exponential
-                    if self.use_linear_schedule:
-                        epsilon = linear_schedule(
-                            self.epsilon_init, 
-                            self.epsilon_min, 
-                            self.exploration_steps, 
-                            total_steps
-                        )
-                    else:
-                        epsilon = max(epsilon * self.epsilon_decay, self.epsilon_min)
                     
                     #copy policy network to target network after a certain number of step
                     if step_count > self.network_sync_rate:
