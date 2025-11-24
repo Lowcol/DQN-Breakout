@@ -56,10 +56,12 @@ class Agent:
         # Minimum buffer size before training starts
         self.min_buffer_size = hyperparameters.get('min_buffer_size', self.mini_batch_size)
         # Update frequency: train every N steps
-        self.update_freq = hyperparameters.get('update_freq', 1)
+        self.update_freq = hyperparameters.get('update_freq', 4)
         # Optional: exploration_steps for linear epsilon schedule (if None, uses exponential decay)
         self.exploration_steps  = hyperparameters.get('exploration_steps', None)
         self.use_linear_schedule = self.exploration_steps is not None
+        # No-op randomization at episode start
+        self.noop_max = hyperparameters.get('noop_max', 30)
 
         self.loss_fn = nn.HuberLoss()   # NN Loss function. Huber loss is more robust to outliers than MSE 
         self.optimizer = None         # NN optimizer. Initialized later
@@ -89,10 +91,10 @@ class Agent:
         env = gym.make('ALE/Breakout-v5', render_mode='human' if render else None)
         env = CropObservation(env, top=34, bottom=0)  # remove scoreboard rows
         env = gym.wrappers.RecordEpisodeStatistics(env)
-        env = MaxAndSkipEnv(env, skip=4)
+        env = MaxAndSkipEnv(env, skip=4)  # repeat action for 4 frames
         env = gym.wrappers.ResizeObservation(env, (84, 84))
         env = gym.wrappers.GrayscaleObservation(env)
-        env = gym.wrappers.FrameStackObservation(env, 4)
+        env = gym.wrappers.FrameStackObservation(env, 4) # stack 4 frames as input
         
         num_actions = env.action_space.n
         obs_shape = env.observation_space.shape
@@ -150,8 +152,21 @@ class Agent:
             episode_reward = 0.0
             episode_steps = 0
             
-            if is_training:
-                    current_life = info.get('lives', 5) if 'lives' in info else 5
+            # Track lives in both training and evaluation modes
+            current_life = info.get('lives', 5) if 'lives' in info else 5
+            
+            # Perform random number of no-op actions at episode start for randomization
+            if self.noop_max > 0:
+                noop_steps = random.randint(1, self.noop_max)
+                for _ in range(noop_steps):
+                    if terminated:
+                        break
+                    state, reward, terminated, truncated, info = env.step(0)  # No-op action is 0
+                    state = np.asarray(state, dtype=np.uint8)
+                    episode_reward += reward
+                    episode_steps += 1
+                    if is_training:
+                        total_steps += 1
             
             life_lost = False
             while (not terminated and episode_reward < self.stop_on_reward):
@@ -166,6 +181,12 @@ class Agent:
                     state = new_state
                     if is_training:
                         total_steps += 1
+                    
+                    # Update life tracking for both training and evaluation
+                    if 'lives' in info and info['lives'] < current_life:
+                        life_lost = True
+                        current_life = info['lives']
+                    
                     continue
                 
                 # select action based on epsilon greedy
@@ -187,7 +208,7 @@ class Agent:
                 
                 if is_training:
                     total_steps += 1
-                    # handle life loss for breakout
+                    # handle life loss for breakout (training mode)
                     done = terminated or truncated
                     if 'lives' in info:
                         if info['lives'] < current_life:
@@ -205,6 +226,12 @@ class Agent:
                     )
                     
                     step_count+=1
+                else:
+                    # handle life loss for breakout (evaluation mode)
+                    if 'lives' in info:
+                        if info['lives'] < current_life:
+                            life_lost = True  # Mark that we need to fire next iteration
+                        current_life = info['lives']
     
 
                 state = new_state

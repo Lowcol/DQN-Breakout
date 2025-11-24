@@ -13,6 +13,7 @@ breakout1:
   stop_on_reward: 100_000
   enable_double_dqn: True
   enable_dueling_dqn: True
+  noop_max: 30  # Maximum no-op actions at episode start
 
 breakout1.1:
   env_id: "Breakout-v5"
@@ -30,22 +31,40 @@ breakout1.1:
   enable_double_dqn: True
   enable_dueling_dqn: True
   exploration_steps: 1000000     # Linear epsilon schedule over 1m steps
+  noop_max: 30  # Maximum no-op actions at episode start
 
 # Medium post configuration - matches the blog implementation exactly
 breakout3.1:
   env_id: "Breakout-v5"
-  replay_memory_size: 300_000   # Medium post uses 500k (reduced from 1M)
+  replay_memory_size: 300000   # Medium post uses 500k (reduced from 1M)
   mini_batch_size: 32           # Batch size 32
-  min_buffer_size: 50_000       # Wait until 50k samples before training
+  min_buffer_size: 50000       # Wait until 50k samples before training
   update_freq: 4                # Train every 4 steps
   epsilon_init: 1.0
   epsilon_min: 0.1              # Decay from 1.0 to 0.1
   epsilon_decay: 0.9995         # Not used (linear schedule takes precedence)
-  network_sync_rate: 10_000     # Target network update every 10k steps
+  network_sync_rate: 10000     # Target network update every 10k steps
   learning_rate_a: 0.0001       # Adam optimizer with lr=0.0001
   discount_factor_g: 0.99       # Gamma = 0.99
   stop_on_reward: 1000           # Stop when reaching 1000 reward
   enable_double_dqn: True       # Double DQN enabled
   enable_dueling_dqn: True      # Dueling DQN enabled
-  exploration_steps: 150_000  # Linear epsilon decay over 150k steps
+  exploration_steps: 250000  # Linear epsilon decay over 250k steps x 4frames/step = 1 million frames
 
+breakout3.2:
+  env_id: "Breakout-v5"
+  replay_memory_size: 500000   # Medium post uses 500k (reduced from 1M)
+  mini_batch_size: 32           # Batch size 32
+  min_buffer_size: 50000       # Wait until 50k samples before training
+  update_freq: 4                # Train every 4 steps
+  epsilon_init: 1.0
+  epsilon_min: 0.1              # Decay from 1.0 to 0.1
+  epsilon_decay: 0.9995         # Not used (linear schedule takes precedence)
+  network_sync_rate: 10000     # Target network update every 10k steps
+  learning_rate_a: 0.0001       # Adam optimizer with lr=0.0001
+  discount_factor_g: 0.99       # Gamma = 0.99
+  stop_on_reward: 1000           # Stop when reaching 1000 reward
+  enable_double_dqn: True       # Double DQN enabled
+  enable_dueling_dqn: True      # Dueling DQN enabled
+  exploration_steps: 250000  # Linear epsilon decay over 250k steps x 4frames/step = 1 million frames
+  noop_max: 30  # Maximum no-op actions at episode start
