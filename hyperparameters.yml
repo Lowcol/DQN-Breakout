@@ -68,3 +68,22 @@ breakout3.2:
   enable_dueling_dqn: True      # Dueling DQN enabled
   exploration_steps: 250000  # Linear epsilon decay over 250k steps x 4frames/step = 1 million frames
   noop_max: 30  # Maximum no-op actions at episode start
+
+# Optimized configuration for limited hardware (100K buffer)
+breakout3.3:
+  env_id: "Breakout-v5"
+  replay_memory_size: 100000   # Reduced for hardware constraints
+  mini_batch_size: 32
+  min_buffer_size: 20000       # Start learning after 20k experiences (20% of buffer)
+  update_freq: 4                # Train every 4 steps
+  epsilon_init: 1.0
+  epsilon_min: 0.01             # Lower min epsilon for more exploitation
+  epsilon_decay: 0.9995         # Not used
+  network_sync_rate: 10000      # Update target every 10k steps
+  learning_rate_a: 0.00025      # Standard DQN learning rate
+  discount_factor_g: 0.99
+  stop_on_reward: 1000
+  enable_double_dqn: True
+  enable_dueling_dqn: True
+  exploration_steps: 1000000    # 1M steps = 4M frames for epsilon decay (CRITICAL FIX)
+  noop_max: 30
