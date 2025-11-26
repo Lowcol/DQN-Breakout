@@ -6,7 +6,6 @@ pyyaml>=6.0
 
 # Reinforcement Learning
 stable-baselines3>=2.0.0
-envpool>=0.8.0
 
 # Atari environments
 gymnasium>=0.29.0

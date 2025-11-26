@@ -75,6 +75,8 @@ class Agent:
         #path to run info
         self.LOG_FILE = os.path.join(self.config_dir, f'{self.hyperparameter_set}.log')
         self.MODEL_FILE = os.path.join(self.config_dir, f'{self.hyperparameter_set}.pt')
+        self.MODEL_FILE_MEAN = os.path.join(self.config_dir, f'{self.hyperparameter_set}_best_mean.pt')
+        self.MODEL_FILE_LAST = os.path.join(self.config_dir, f'{self.hyperparameter_set}_last.pt')
         self.GRAPH_FILE = os.path.join(self.config_dir, f'{self.hyperparameter_set}.png')
         self.METRICS_FILE = os.path.join(self.config_dir, f'{self.hyperparameter_set}_metrics.csv')
         self._metrics_header_written = False
@@ -138,6 +140,7 @@ class Agent:
             
             # track best reward
             best_reward = -999999
+            best_mean_reward = -999999
         
         else:
             # load learned policy
@@ -226,12 +229,40 @@ class Agent:
                         obs=state,
                         next_obs=new_state,
                         action=np.array(action_value, dtype=np.int64),
-                        reward=np.array(reward, dtype=np.float32),
+                        reward=np.array(np.clip(reward, -1, 1), dtype=np.float32),
                         done=np.array(done, dtype=bool),
                         infos=[info]
                     )
                     
                     step_count+=1
+
+                    # Decay epsilon based on total_steps (independent of training)
+                    if self.use_linear_schedule:
+                        epsilon = self._linear_schedule(
+                            self.epsilon_init, 
+                            self.epsilon_min, 
+                            self.exploration_steps, 
+                            total_steps
+                        )
+                    else:
+                        epsilon = max(epsilon * self.epsilon_decay, self.epsilon_min)
+                    
+                    # Check if buffer is being populated (before min_buffer_size)
+                    if not memory.full and memory.pos < self.min_buffer_size:
+                        if memory.pos % 10000 == 0 and memory.pos > 0:
+                            print(f"Populating replay buffer... {memory.pos}/{self.min_buffer_size} samples (epsilon: {epsilon:.3f})")
+                        # continue  # Skip training but epsilon still decays - REMOVED continue as it would skip state update
+                    else:
+                        # Train only every update_freq steps after buffer is ready
+                        if total_steps % self.update_freq == 0:
+                            #Sample from memory
+                            data = memory.sample(self.mini_batch_size)
+                            last_loss = self.optimize(data, policy_dqn, target_dqn)
+                            
+                            #copy policy network to target network after a certain number of step
+                            if step_count > self.network_sync_rate:
+                                target_dqn.load_state_dict(policy_dqn.state_dict())
+                                step_count=0
                 else:
                     # handle life loss for breakout (evaluation mode)
                     if 'lives' in info:
@@ -257,6 +288,17 @@ class Agent:
                     epsilon=epsilon,
                     loss=last_loss
                 )
+
+                # Save best mean reward model (Stable)
+                if mean_reward > best_mean_reward:
+                    best_mean_reward = mean_reward
+                    torch.save(policy_dqn.state_dict(), self.MODEL_FILE_MEAN)
+                    print(f"{datetime.now().strftime(DATE_FORMAT)}: New best mean reward {best_mean_reward:0.1f}, saving model...")
+
+                # Save latest model every 1000 episodes (Checkpoint)
+                if episode % 1000 == 0:
+                    torch.save(policy_dqn.state_dict(), self.MODEL_FILE_LAST)
+
                 if episode_reward > best_reward:
                     log_message = f"{datetime.now().strftime(DATE_FORMAT)}: New best reward {episode_reward:0.1f} at episode {episode}, saving model..."
                     print(log_message)
@@ -276,34 +318,6 @@ class Agent:
                         epsilon_history=epsilon_by_episode
                     )
                     last_graph_update_time = current_time
-                
-                # Decay epsilon based on total_steps (independent of training)
-                if self.use_linear_schedule:
-                    epsilon = self._linear_schedule(
-                        self.epsilon_init, 
-                        self.epsilon_min, 
-                        self.exploration_steps, 
-                        total_steps
-                    )
-                else:
-                    epsilon = max(epsilon * self.epsilon_decay, self.epsilon_min)
-                
-                # Check if buffer is being populated (before min_buffer_size)
-                if memory.pos < self.min_buffer_size:
-                    if memory.pos % 10000 == 0 and memory.pos > 0:
-                        print(f"Populating replay buffer... {memory.pos}/{self.min_buffer_size} samples (epsilon: {epsilon:.3f})")
-                    continue  # Skip training but epsilon still decays
-                
-                # Train only every update_freq steps after buffer is ready
-                if total_steps % self.update_freq == 0:
-                    #Sample from memory
-                    data = memory.sample(self.mini_batch_size)
-                    last_loss = self.optimize(data, policy_dqn, target_dqn)
-                    
-                    #copy policy network to target network after a certain number of step
-                    if step_count > self.network_sync_rate:
-                        target_dqn.load_state_dict(policy_dqn.state_dict())
-                        step_count=0
                     
     def _linear_schedule(self, start_e, end_e, duration, t):
         """Linear interpolation between start_e and end_e over duration steps."""
@@ -382,6 +396,7 @@ class Agent:
         
         self.optimizer.zero_grad()  # Clear gradients
         loss.backward()             # Compute gradients(backpropagation)
+        torch.nn.utils.clip_grad_norm_(policy_dqn.parameters(), 10.0)
         self.optimizer.step()       # Update network parameters i.e. weights and biases
         return loss.item()
             

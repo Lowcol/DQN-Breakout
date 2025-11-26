@@ -43,3 +43,12 @@ adding seperate file for view the agents in agent. Add to be implemented in sepe
 **2025-11-23**: ditched the envpool env since its just to finiky to use. Also it add a bunch of limitation that are not worth dealing with like no render mode.
 Implemented agents1.3.py that recreates the params used in original DQN training.
 Need to fix epsilon decay and the training result are not what I expected so need to review the code. Im getting breakout3.1.
+
+
+**2025-11-25**: Created agents1.4.py to fix critical training issues found in 1.3.
+Fixed the training loop placement (was previously running once per episode, now runs every update_freq steps).
+Added reward clipping (-1, 1) to stabilize training.
+Added gradient clipping (norm 10.0) to prevent exploding gradients.
+Verified these fixes align with standard DQN implementations.
+
+
