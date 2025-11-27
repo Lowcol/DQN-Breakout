@@ -1,6 +1,9 @@
 import numpy as np
 import gymnasium as gym
 import cv2
+import glob
+import random
+import os
 
 # --- Image Sources ---
 
@@ -27,36 +30,79 @@ class NoiseSource(ImageSource):
 
 class VideoSource(ImageSource):
     """
-    Plays a video as the background. 
-    Requires: pip install scikit-video
+    Plays a video as the background using OpenCV.
     """
-    def __init__(self, shape, file_path):
-        try:
-            import skvideo.io
-        except ImportError:
-            raise ImportError("Please install scikit-video to use VideoSource: pip install scikit-video")
-            
+    def __init__(self, shape, file_path, videos_folder=None):
         self.shape = shape
-        self.data = skvideo.io.vread(file_path)
-        self.i = 0
-        print(f"Loaded video {file_path} with shape {self.data.shape}")
+        self.videos_folder = videos_folder
+        self.current_file_path = file_path
+        self._load_video(file_path)
+
+    def _load_video(self, file_path):
+        """Load a video file."""
+        if hasattr(self, 'cap') and self.cap is not None:
+            self.cap.release()
+            
+        self.cap = cv2.VideoCapture(file_path)
+        
+        if not self.cap.isOpened():
+            raise ValueError(f"Could not open video file: {file_path}")
+        
+        # Get video info
+        total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        fps = self.cap.get(cv2.CAP_PROP_FPS)
+
+    def _get_random_video(self):
+        """Get a random video file from the videos folder."""
+        if self.videos_folder is None:
+            return self.current_file_path
+            
+        video_pattern = os.path.join(self.videos_folder, '**', '*.mp4')
+        video_files = glob.glob(video_pattern, recursive=True)
+        
+        if not video_files:
+            return self.current_file_path
+        
+        # Try to get a different video than the current one
+        available_videos = [v for v in video_files if v != self.current_file_path]
+        if not available_videos:
+            available_videos = video_files
+            
+        selected_video = random.choice(available_videos)
+        return selected_video
 
     def get_image(self):
-        if self.i >= len(self.data):
-            self.i = 0
-        img = self.data[self.i]
-        self.i += 1
+        ret, frame = self.cap.read()
+        
+        if not ret:
+            # Video ended, load a new random video
+            if self.videos_folder is not None:
+                new_video = self._get_random_video()
+                self.current_file_path = new_video
+                self._load_video(new_video)
+            else:
+                # No videos folder, restart current video
+                self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                
+            ret, frame = self.cap.read()
+            
+            if not ret:
+                # If still can't read, return black frame
+                return np.zeros((self.shape[0], self.shape[1], 3), dtype=np.uint8)
         
         # Resize video frame to match environment observation size if needed
-        if img.shape[:2] != self.shape:
-            img = cv2.resize(img, (self.shape[1], self.shape[0]))
+        if frame.shape[:2] != self.shape:
+            frame = cv2.resize(frame, (self.shape[1], self.shape[0]))
+        
+        # Convert BGR to RGB (OpenCV uses BGR by default)
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             
-        return img
+        return frame
 
     def reset(self):
         # Optional: Randomize start position in video on reset?
-        # For now, just keep playing loop
-        pass
+        # For now, just restart from beginning
+        self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
 
 # --- Matting Strategies ---
 

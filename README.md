@@ -1,54 +1,80 @@
 # DQN-Breakout
-RL agent using DQN to solve Breakout a ATARI game
 
+A Deep Q-Network (DQN) reinforcement learning agent for solving Atari Breakout.
 
-## Conda env setup
+## Environment Setup
 
-need to be run in *WSL* since envpool does not work on Windows
--- install miniconda:
-'''
+### Conda Environment
+
+Note: Some features require WSL on Windows as `envpool` does not work natively on Windows.
+
+**Install Miniconda:**
+
+```bash
 cd ~
 wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh
 bash miniconda.sh
 source ~/.bashrc
 conda --version
-'''
+```
 
--- Create conda env
-'''
-conda create -n envpool python3.10 -y
+**Create Conda Environment:**
+
+```bash
+conda create -n envpool python=3.10 -y
 conda activate envpool
-'''
+```
 
--- install pytorch
-'''
+**Install PyTorch:**
+
+```bash
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
-'''
+```
 
--- install requirements
-'''
-pip install -r requirements
-'''
+**Install Requirements:**
+
+```bash
+pip install -r requirements.txt
+```
+
+## Features
+
+- **Double DQN**: Reduces overestimation bias
+- **Dueling DQN**: Separates value and advantage estimation
+- **Experience Replay**: Stabilizes training with replay buffer
+- **Target Network**: Periodic synchronization for stable learning
+- **Background Replacement**: Test robustness with noise and natural video backgrounds
+- **Configurable Hyperparameters**: YAML-based configuration system
+
+## Usage
+
+Run training with different configurations:
+
+```bash
+python agents2.0.py breakout1 --train
+python agents2.0.py breakout_noise  --train  # With Gaussian noise background
+python agents2.0.py breakout_video  --train # With natural video background
+```
+
+Watch trained agent:
+
+```bash
+python watch_agent.py --model runs/breakout1/breakout1.pt
+```
 
 ## Implementation Log
 
-**2025-11-21**: Enhanced DQN implementation with envpool integration for faster training. Fixed compatibility issues between old gym (envpool) and new gymnasium (stable-baselines3), implemented GPU-accelerated TorchAtariReplayBuffer, and added optimized hyperparameter configurations (breakout_fast, breakout_ultrafast) with organized output structure in config-specific subdirectories.
+**2025-11-21**: Enhanced DQN implementation with `envpool` integration for faster training. Fixed compatibility issues between old gym (`envpool`) and new gymnasium (`stable-baselines3`), implemented GPU-accelerated `TorchAtariReplayBuffer`, and added optimized hyperparameter configurations (`breakout_fast`, `breakout_ultrafast`) with organized output structure in config-specific subdirectories.
 
+**2025-11-22**: Implemented max step parameter for overall training control. Adjusted graphing functionality and added separate file for viewing agents in action. Separated from `envpool` environment to avoid render mode limitations.
 
-**2025-11-22**: implemented a max step param for the overall training
-Ajusting graphing,
-adding seperate file for view the agents in agent. Add to be implemented in seperate file since envpool doesn't allow render. And I did't want for both gym environment to be running in same file.
+**2025-11-23**: Discontinued `envpool` environment due to compatibility issues and limitations (no render mode). Implemented `agents1.3.py` that recreates parameters used in original DQN training. Identified epsilon decay issues requiring code review for `breakout3.1` configuration.
 
+**2025-11-25**: Created `agents1.4.py` to fix critical training issues found in version 1.3:
 
-**2025-11-23**: ditched the envpool env since its just to finiky to use. Also it add a bunch of limitation that are not worth dealing with like no render mode.
-Implemented agents1.3.py that recreates the params used in original DQN training.
-Need to fix epsilon decay and the training result are not what I expected so need to review the code. Im getting breakout3.1.
+- Fixed training loop placement (was running once per episode, now runs every `update_freq` steps)
+- Added reward clipping (-1, 1) to stabilize training
+- Added gradient clipping (norm 10.0) to prevent exploding gradients
+- Verified fixes align with standard DQN implementations
 
-
-**2025-11-25**: Created agents1.4.py to fix critical training issues found in 1.3.
-Fixed the training loop placement (was previously running once per episode, now runs every update_freq steps).
-Added reward clipping (-1, 1) to stabilize training.
-Added gradient clipping (norm 10.0) to prevent exploding gradients.
-Verified these fixes align with standard DQN implementations.
-
-
+**2025-11-26**: Implemented `natural_wrapper` for background replacement to test DQN robustness with Gaussian noise and natural videos. Updated `agents2.0.py` to support these new configurations for evaluating agent performance under visual perturbations.
