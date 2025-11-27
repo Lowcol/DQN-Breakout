@@ -1,3 +1,4 @@
+import time
 import csv
 import gymnasium as gym 
 import ale_py  # Required for ALE namespace registration
@@ -75,8 +76,6 @@ class Agent:
         #path to run info
         self.LOG_FILE = os.path.join(self.config_dir, f'{self.hyperparameter_set}.log')
         self.MODEL_FILE = os.path.join(self.config_dir, f'{self.hyperparameter_set}.pt')
-        self.MODEL_FILE_MEAN = os.path.join(self.config_dir, f'{self.hyperparameter_set}_best_mean.pt')
-        self.MODEL_FILE_LAST = os.path.join(self.config_dir, f'{self.hyperparameter_set}_last.pt')
         self.GRAPH_FILE = os.path.join(self.config_dir, f'{self.hyperparameter_set}.png')
         self.METRICS_FILE = os.path.join(self.config_dir, f'{self.hyperparameter_set}_metrics.csv')
         self._metrics_header_written = False
@@ -140,7 +139,6 @@ class Agent:
             
             # track best reward
             best_reward = -999999
-            best_mean_reward = -999999
         
         else:
             # load learned policy
@@ -289,23 +287,13 @@ class Agent:
                     loss=last_loss
                 )
 
-                # Save best mean reward model (Stable)
-                if mean_reward > best_mean_reward:
-                    best_mean_reward = mean_reward
-                    torch.save(policy_dqn.state_dict(), self.MODEL_FILE_MEAN)
-                    print(f"{datetime.now().strftime(DATE_FORMAT)}: New best mean reward {best_mean_reward:0.1f}, saving model...")
-
-                # Save latest model every 1000 episodes (Checkpoint)
-                if episode % 1000 == 0:
-                    torch.save(policy_dqn.state_dict(), self.MODEL_FILE_LAST)
-
                 if episode_reward > best_reward:
                     log_message = f"{datetime.now().strftime(DATE_FORMAT)}: New best reward {episode_reward:0.1f} at episode {episode}, saving model..."
                     print(log_message)
                     with open(self.LOG_FILE, 'a') as file:
                         file.write(log_message+ '\n')
                 
-                    torch.save(policy_dqn.state_dict(), self.MODEL_FILE)
+                    self.save_model_safe(policy_dqn, self.MODEL_FILE)
                     best_reward = episode_reward
 
                 
@@ -361,7 +349,19 @@ class Agent:
             writer = csv.writer(csvfile)
             writer.writerow([episode, total_steps, episode_reward, rolling_reward, epsilon, loss_value])
 
-                    
+    def save_model_safe(self, model, path):
+        # Retry mechanism to handle file locking (e.g. OneDrive)
+        max_retries = 5
+        for attempt in range(max_retries):
+            try:
+                torch.save(model.state_dict(), path)
+                return
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    time.sleep(1.0) # Wait 1 second before retrying
+                else:
+                    print(f"Failed to save model to {path} after {max_retries} attempts: {e}")
+
     def optimize(self, data, policy_dqn, target_dqn):
         
         
